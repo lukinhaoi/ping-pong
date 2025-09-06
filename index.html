@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Pong - Jogador vs IA</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      color: white;
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    
+    .game-header {
+      display: flex;
+      justify-content: space-between;
+      width: 1000px;
+      margin-bottom: 20px;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    
+    .player-info {
+      background: rgba(255,255,255,0.1);
+      padding: 15px 25px;
+      border-radius: 15px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+    
+    .player-score {
+      font-size: 36px;
+      margin: 10px 0;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    
+    .player1 { border-left: 5px solid #00ff88; }
+    .player2 { border-right: 5px solid #ff4757; }
+    
+    canvas {
+      background: #111;
+      display: block;
+      border: 3px solid #fff;
+      border-radius: 15px;
+      box-shadow: 0 0 30px rgba(255,255,255,0.3);
+    }
+    
+    .controls {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 18px;
+      background: rgba(255,255,255,0.1);
+      padding: 15px 30px;
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .game-status {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: bold;
+      text-shadow: 3px 3px 6px rgba(0,0,0,0.8);
+      z-index: 100;
+      display: none;
+    }
+    
+    .winner {
+      color: #00ff88;
+      animation: winner-glow 1s ease-in-out infinite alternate;
+    }
+    
+    @keyframes winner-glow {
+      from { text-shadow: 3px 3px 6px rgba(0,0,0,0.8); }
+      to { text-shadow: 0 0 30px #00ff88, 3px 3px 6px rgba(0,0,0,0.8); }
+    }
+    
+    .restart-btn {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+      border: none;
+      color: white;
+      padding: 15px 30px;
+      font-size: 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: all 0.3s ease;
+    }
+    
+    .restart-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <div class="game-header">
+    <div class="player-info player1">
+      <div>🎮 JOGADOR</div>
+      <div class="player-score" id="playerScore">0</div>
+      <div>WASD</div>
+    </div>
+    
+    <div class="player-info player2">
+      <div>🤖 COMPUTADOR</div>
+      <div class="player-score" id="aiScore">0</div>
+      <div>IA</div>
+    </div>
+  </div>
+  
+  <div style="position: relative;">
+    <canvas id="gameCanvas" width="1000" height="600"></canvas>
+    <div class="game-status" id="gameStatus"></div>
+  </div>
+  
+  <div class="controls">
+    <strong>Controles:</strong> W/S = Cima/Baixo | A/D = Esquerda/Direita<br>
+    <small>Primeiro a fazer 5 pontos ganha!</small>
+  </div>
+  
+  <button class="restart-btn" onclick="restartGame()">🔄 REINICIAR JOGO</button>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const playerScoreEl = document.getElementById("playerScore");
+    const aiScoreEl = document.getElementById("aiScore");
+    const gameStatusEl = document.getElementById("gameStatus");
+
+    // Pontuações
+    let playerScore = 0;
+    let aiScore = 0;
+    const winningScore = 5;
+    let gameOver = false;
+
+    // Bola
+    let ball = {
+      x: canvas.width / 2,
+      y: canvas.height / 2,
+      radius: 12,
+      dx: 5,
+      dy: 4,
+      color: "#fff",
+      trail: [],
+      speed: 5
+    };
+
+    // Raquete do jogador (esquerda)
+    let playerPaddle = {
+      x: 30,
+      y: canvas.height / 2 - 60,
+      width: 15,
+      height: 120,
+      speed: 8,
+      color: "#00ff88"
+    };
+
+    // Raquete da IA (direita)
+    let aiPaddle = {
+      x: canvas.width - 45,
+      y: canvas.height / 2 - 60,
+      width: 15,
+      height: 120,
+      speed: 6,
+      color: "#ff4757"
+    };
+
+    let keys = {};
+
+    // Controles
+    window.addEventListener("keydown", (e) => {
+      keys[e.key.toLowerCase()] = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    function updateScore() {
+      playerScoreEl.textContent = playerScore;
+      aiScoreEl.textContent = aiScore;
+      
+      // Verificar vitória
+      if (playerScore >= winningScore) {
+        gameOver = true;
+        showGameStatus("🎉 VOCÊ GANHOU! 🎉", "winner");
+      } else if (aiScore >= winningScore) {
+        gameOver = true;
+        showGameStatus("🤖 IA GANHOU! 🤖", "winner");
+      }
+    }
+
+    function showGameStatus(message, className = "") {
+      gameStatusEl.textContent = message;
+      gameStatusEl.className = `game-status ${className}`;
+      gameStatusEl.style.display = "block";
+      
+      if (!gameOver) {
+        setTimeout(() => {
+          gameStatusEl.style.display = "none";
+        }, 2000);
+      }
+    }
+
+    function resetBall() {
+      ball.x = canvas.width / 2;
+      ball.y = canvas.height / 2;
+      ball.dx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+      ball.dy = (Math.random() - 0.5) * 8;
+      ball.trail = [];
+    }
+
+    function movePlayerPaddle() {
+      if (gameOver) return;
+      
+      if (keys["w"] && playerPaddle.y > 0) {
+        playerPaddle.y -= playerPaddle.speed;
+      }
+      if (keys["s"] && playerPaddle.y + playerPaddle.height < canvas.height) {
+        playerPaddle.y += playerPaddle.speed;
+      }
+      if (keys["a"] && playerPaddle.x > 0) {
+        playerPaddle.x -= playerPaddle.speed;
+      }
+      if (keys["d"] && playerPaddle.x + playerPaddle.width < canvas.width / 2 - 50) {
+        playerPaddle.x += playerPaddle.speed;
+      }
+    }
+
+    function moveAiPaddle() {
+      if (gameOver) return;
+      
+      // IA inteligente - segue a bola com alguma imprecisão
+      const aiCenter = aiPaddle.y + aiPaddle.height / 2;
+      const ballCenter = ball.y;
+      const difficulty = 0.8; // 0.8 = IA bem forte, 1.0 = perfeita
+      
+      if (ball.dx > 0) { // Bola vindo em direção à IA
+        const targetY = ballCenter - aiPaddle.height / 2;
+        const diff = targetY - aiPaddle.y;
+        
+        if (Math.abs(diff) > 5) {
+          if (diff > 0 && aiPaddle.y + aiPaddle.height < canvas.height) {
+            aiPaddle.y += aiPaddle.speed * difficulty;
+          } else if (diff < 0 && aiPaddle.y > 0) {
+            aiPaddle.y -= aiPaddle.speed * difficulty;
+          }
+        }
+      }
+      
+      // Manter posição defensiva
+      if (aiPaddle.x < canvas.width - 50) {
+        aiPaddle.x += 2;
+      }
+    }
+
+    function drawPaddle(paddle) {
+      ctx.save();
+      ctx.shadowColor = paddle.color;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = paddle.color;
+      ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+      
+      // Efeito de brilho
+      const gradient = ctx.createLinearGradient(paddle.x, 0, paddle.x + paddle.width, 0);
+      gradient.addColorStop(0, paddle.color);
+      gradient.addColorStop(0.5, "#fff");
+      gradient.addColorStop(1, paddle.color);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+      ctx.restore();
+    }
+
+    function drawBall() {
+      // Rastro da bola
+      ball.trail.forEach((pos, index) => {
+        ctx.save();
+        ctx.globalAlpha = (index + 1) / ball.trail.length * 0.5;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, ball.radius * 0.7, 0, Math.PI * 2);
+        ctx.fillStyle = ball.color;
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // Bola principal
+      ctx.save();
+      ctx.shadowColor = "#fff";
+      ctx.shadowBlur = 25;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      
+      const gradient = ctx.createRadialGradient(
+        ball.x - 3, ball.y - 3, 0,
+        ball.x, ball.y, ball.radius
+      );
+      gradient.addColorStop(0, "#fff");
+      gradient.addColorStop(1, "#ddd");
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function createParticles(x, y, color) {
+      for (let i = 0; i < 15; i++) {
+        setTimeout(() => {
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          const px = x + (Math.random() - 0.5) * 80;
+          const py = y + (Math.random() - 0.5) * 80;
+          ctx.arc(px, py, Math.random() * 4 + 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }, i * 15);
+      }
+    }
+
+    function checkPaddleCollision(paddle) {
+      if (
+        ball.x + ball.radius > paddle.x &&
+        ball.x - ball.radius < paddle.x + paddle.width &&
+        ball.y + ball.radius > paddle.y &&
+        ball.y - ball.radius < paddle.y + paddle.height
+      ) {
+        // Calcular ângulo baseado na posição do impacto
+        const hitPos = (ball.y - (paddle.y + paddle.height / 2)) / (paddle.height / 2);
+        const angle = hitPos * Math.PI / 4; // Máximo 45 graus
+        
+        ball.dx = -ball.dx;
+        ball.dy = ball.speed * Math.sin(angle);
+        
+        // Aumentar velocidade gradualmente
+        ball.speed = Math.min(ball.speed + 0.2, 10);
+        ball.dx = ball.dx > 0 ? ball.speed : -ball.speed;
+        
+        // Efeitos visuais
+        createParticles(ball.x, ball.y, paddle.color);
+        
+        // Posicionar bola fora da raquete
+        if (paddle === playerPaddle) {
+          ball.x = paddle.x + paddle.width + ball.radius + 1;
+        } else {
+          ball.x = paddle.x - ball.radius - 1;
+        }
+      }
+    }
+
+    function updateBall() {
+      if (gameOver) return;
+      
+      // Adicionar ao rastro
+      ball.trail.push({x: ball.x, y: ball.y});
+      if (ball.trail.length > 10) {
+        ball.trail.shift();
+      }
+
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      // Rebater nas paredes superior e inferior
+      if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+        ball.dy *= -1;
+        createParticles(ball.x, ball.y, "#4ecdc4");
+      }
+
+      // Verificar colisões com as raquetes
+      checkPaddleCollision(playerPaddle);
+      checkPaddleCollision(aiPaddle);
+
+      // Pontuação - bola saiu pelas laterais
+      if (ball.x < 0) {
+        aiScore++;
+        createParticles(50, canvas.height/2, "#ff4757");
+        showGameStatus("IA MARCOU! 🤖");
+        updateScore();
+        if (!gameOver) {
+          setTimeout(resetBall, 1000);
+        }
+      } else if (ball.x > canvas.width) {
+        playerScore++;
+        createParticles(canvas.width - 50, canvas.height/2, "#00ff88");
+        showGameStatus("VOCÊ MARCOU! 🎉");
+        updateScore();
+        if (!gameOver) {
+          setTimeout(resetBall, 1000);
+        }
+      }
+    }
+
+    function drawCenterLine() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([20, 15]);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBackground() {
+      // Efeito de gradiente no fundo
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+      gradient.addColorStop(0, "rgba(0,255,136,0.05)");
+      gradient.addColorStop(0.5, "rgba(255,255,255,0.02)");
+      gradient.addColorStop(1, "rgba(255,71,87,0.05)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function restartGame() {
+      playerScore = 0;
+      aiScore = 0;
+      gameOver = false;
+      ball.speed = 5;
+      
+      // Resetar posições
+      playerPaddle.x = 30;
+      playerPaddle.y = canvas.height / 2 - 60;
+      aiPaddle.x = canvas.width - 45;
+      aiPaddle.y = canvas.height / 2 - 60;
+      
+      resetBall();
+      updateScore();
+      gameStatusEl.style.display = "none";
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawBackground();
+      drawCenterLine();
+      movePlayerPaddle();
+      moveAiPaddle();
+      updateBall();
+      drawBall();
+      drawPaddle(playerPaddle);
+      drawPaddle(aiPaddle);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Inicializar jogo
+    resetBall();
+    updateScore();
+    gameLoop();
+  </script>
+</body>
+</html>
